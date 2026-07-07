@@ -3,123 +3,93 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Contador de Chapas — leitura por vídeo</title>
+<title>Contador de Chapas</title>
 <style>
-  :root{
-    --bg:#0E1116; --surface:#171B22; --surface2:#1E232C; --line:#2A2F3A;
-    --text:#E8EAED; --muted:#8A929E; --accent:#F5B841; --edge:#38E0C8;
-    --warn:#E0653A; --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace;
-    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  }
+  :root{--bg:#0E1116;--surface:#171B22;--surface2:#1E232C;--line:#2A2F3A;
+    --text:#E8EAED;--muted:#8A929E;--accent:#F5B841;--edge:#38E0C8;--hot:#E0653A;
+    --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
-  body{
-    background:var(--bg);color:var(--text);font-family:var(--sans);
-    display:flex;flex-direction:column;overflow:hidden;
-    -webkit-tap-highlight-color:transparent;
-  }
-  header{
-    display:flex;align-items:center;justify-content:space-between;
-    padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;
-  }
-  header .title{font-size:13px;font-weight:600;letter-spacing:.2px}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex;flex-direction:column;overflow:hidden;-webkit-tap-highlight-color:transparent}
+  header{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--line);flex:0 0 auto}
+  header .title{font-size:13px;font-weight:600}
   header .title span{color:var(--muted);font-weight:400}
-  .pill{
-    font-family:var(--mono);font-size:10px;letter-spacing:.5px;text-transform:uppercase;
-    padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);
-    display:flex;align-items:center;gap:6px;white-space:nowrap;
-  }
-  .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
-  .pill.live .dot{background:var(--edge);box-shadow:0 0 6px var(--edge)}
-  .pill.frozen .dot{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+  .modeswitch{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .modeswitch button{background:none;border:none;color:var(--muted);font-family:var(--sans);font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer}
+  .modeswitch button.on{background:var(--accent);color:#1a1400}
 
   .stage{position:relative;flex:1 1 auto;background:#000;overflow:hidden;min-height:0}
   #video,#still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
   #overlay{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 
-  /* big count readout floating over the stage */
-  .readout{
-    position:absolute;top:12px;left:12px;z-index:3;
-    background:rgba(14,17,22,.72);backdrop-filter:blur(4px);
-    border:1px solid var(--line);border-radius:14px;padding:10px 14px;
-    display:flex;align-items:baseline;gap:8px;pointer-events:none;
-  }
-  .readout .num{font-family:var(--mono);font-size:52px;font-weight:600;line-height:.9;color:var(--accent);letter-spacing:-1px}
+  .readout{position:absolute;top:12px;left:12px;z-index:3;background:rgba(14,17,22,.72);backdrop-filter:blur(4px);
+    border:1px solid var(--line);border-radius:14px;padding:8px 16px;display:flex;align-items:baseline;gap:8px;pointer-events:none;transition:transform .12s ease}
+  .readout.bump{transform:scale(1.12)}
+  .readout .num{font-family:var(--mono);font-size:54px;font-weight:600;line-height:.9;color:var(--accent);letter-spacing:-1px}
   .readout .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .speedwarn{position:absolute;top:12px;right:12px;z-index:3;background:rgba(224,101,58,.92);color:#fff;
+    font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;display:none}
+  .speedwarn.show{display:block}
+  .hint{position:absolute;bottom:10px;left:12px;right:12px;z-index:3;text-align:center;font-size:12px;color:var(--muted);
+    background:rgba(14,17,22,.6);border-radius:8px;padding:6px 10px;pointer-events:none}
 
-  .hint{
-    position:absolute;bottom:12px;left:12px;right:12px;z-index:3;text-align:center;
-    font-size:12px;color:var(--muted);background:rgba(14,17,22,.6);
-    border-radius:8px;padding:6px 10px;pointer-events:none;
-  }
-
-  /* controls drawer */
-  .panel{flex:0 0 auto;background:var(--surface);border-top:1px solid var(--line)}
-  .ctrls{padding:12px 14px 4px;display:none;gap:14px;flex-direction:column}
-  .ctrls.open{display:flex}
-  .row{display:flex;align-items:center;gap:12px}
-  .row label{font-size:12px;color:var(--muted);width:96px;flex:0 0 auto}
-  .row .val{font-family:var(--mono);font-size:12px;color:var(--text);width:42px;text-align:right;flex:0 0 auto}
-  input[type=range]{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;background:var(--line);outline:none}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer}
-  input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-radius:50%;background:var(--accent)}
-  .toggle{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text)}
-  .toggle input{width:18px;height:18px;accent-color:var(--accent)}
-
-  .drawer-tab{
-    width:100%;background:none;border:none;color:var(--muted);font-size:11px;
-    letter-spacing:.5px;text-transform:uppercase;padding:8px;cursor:pointer;font-family:var(--sans);
-  }
-
-  .actions{
-    display:grid;grid-template-columns:1fr auto auto auto 1fr;gap:8px;align-items:center;
-    padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);
-  }
-  .btn{
-    border:1px solid var(--line);background:var(--surface2);color:var(--text);
-    font-family:var(--sans);font-size:13px;font-weight:600;border-radius:12px;
-    padding:12px 10px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;
-    -webkit-user-select:none;user-select:none;
-  }
-  .btn:active{transform:scale(.97)}
-  .btn.primary{background:var(--accent);color:#1a1400;border-color:var(--accent)}
-  .btn.round{width:52px;height:52px;border-radius:50%;font-size:24px;font-weight:400;padding:0}
-  .btn.ghost{background:none}
-  .btn:disabled{opacity:.4;cursor:default}
-  .hidden{display:none!important}
-
-  .overlay-msg{
-    position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;
-    padding:24px;text-align:center;background:rgba(14,17,22,.9);
-  }
+  .overlay-msg{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;background:rgba(14,17,22,.92)}
   .overlay-msg .box{max-width:340px}
   .overlay-msg h2{font-size:16px;margin-bottom:10px}
-  .overlay-msg p{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:18px}
-  #fileInput{display:none}
-  .fps{position:absolute;top:12px;right:12px;z-index:3;font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.6}
+  .overlay-msg p{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:18px}
+
+  .panel{flex:0 0 auto;background:var(--surface);border-top:1px solid var(--line)}
+  .ctrls{padding:12px 14px 2px;display:none;gap:13px;flex-direction:column}
+  .ctrls.open{display:flex}
+  .row{display:flex;align-items:center;gap:12px}
+  .row label{font-size:12px;color:var(--muted);width:104px;flex:0 0 auto}
+  .row .val{font-family:var(--mono);font-size:12px;width:40px;text-align:right;flex:0 0 auto}
+  input[type=range]{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent)}
+  input[type=range]::-moz-range-thumb{width:22px;height:22px;border:none;border-radius:50%;background:var(--accent)}
+  .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:1}
+  .seg button{flex:1;background:none;border:none;color:var(--muted);font-family:var(--sans);font-size:12px;padding:8px;cursor:pointer}
+  .seg button.on{background:var(--surface2);color:var(--accent)}
+  .drawer-tab{width:100%;background:none;border:none;color:var(--muted);font-size:11px;letter-spacing:.5px;text-transform:uppercase;padding:8px;cursor:pointer;font-family:var(--sans)}
+
+  .actions{display:grid;gap:8px;align-items:center;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+  .actions.sweep{grid-template-columns:auto auto 1fr auto auto}
+  .actions.photo{grid-template-columns:1fr auto auto auto 1fr}
+  .btn{border:1px solid var(--line);background:var(--surface2);color:var(--text);font-family:var(--sans);font-size:13px;font-weight:600;
+    border-radius:12px;padding:0 12px;height:52px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;user-select:none;-webkit-user-select:none}
+  .btn:active{transform:scale(.96)}
+  .btn.primary{background:var(--accent);color:#1a1400;border-color:var(--accent)}
+  .btn.round{width:52px;padding:0;font-size:24px;font-weight:400}
+  .btn.on{background:var(--accent);color:#1a1400;border-color:var(--accent)}
+  .btn:disabled{opacity:.35}
+  .hidden{display:none!important}
+  .torchwrap{display:flex;flex-direction:column;align-items:center;gap:3px}
+  .torchwrap small{font-size:9px;color:var(--muted)}
 </style>
 </head>
 <body>
   <header>
-    <div class="title">Contador de Chapas <span>· leitura por vídeo</span></div>
-    <div class="pill" id="statusPill"><span class="dot"></span><span id="statusText">iniciando</span></div>
+    <div class="title">Contador de Chapas</div>
+    <div class="modeswitch" id="modeSwitch">
+      <button data-m="sweep" class="on">Passar</button>
+      <button data-m="photo">Foto</button>
+    </div>
   </header>
 
   <div class="stage" id="stage">
     <video id="video" playsinline muted autoplay></video>
     <img id="still" alt="foto da pilha">
     <canvas id="overlay"></canvas>
-
-    <div class="readout"><span class="num" id="countNum">0</span><span class="lbl">chapas</span></div>
-    <div class="fps" id="fps"></div>
-    <div class="hint" id="hint">Aponte a faixa na lateral da pilha e arraste-a para centralizar nas bordas.</div>
+    <div class="readout" id="readout"><span class="num" id="countNum">0</span><span class="lbl">chapas</span></div>
+    <div class="speedwarn" id="speedwarn">⚠ Devagar</div>
+    <div class="hint" id="hint">Passe o celular devagar pela lateral da pilha.</div>
 
     <div class="overlay-msg" id="startMsg">
       <div class="box">
-        <h2>Como usar</h2>
-        <p>Aponte a câmera para a <b>lateral</b> da pilha, de forma que dê pra ver as linhas de cada chapa. A faixa amarela é onde ele conta — arraste para alinhar. Ajuste <b>sensibilidade</b> e <b>espaçamento</b> até o número bater, depois <b>congele</b> pra ler.</p>
-        <button class="btn primary" id="startCam">Ligar câmera</button>
-        <button class="btn ghost" id="startPhoto" style="margin-top:8px">Usar uma foto</button>
+        <h2 id="msgTitle">Modo Passar</h2>
+        <p id="msgText">Ligue a câmera, encoste a linha na 1ª chapa e passe o celular <b>devagar</b> ao longo da pilha. Cada borda que cruza a linha conta +1.</p>
+        <button class="btn primary" id="startCam" style="width:100%">Ligar câmera</button>
+        <button class="btn" id="startPhoto" style="width:100%;margin-top:8px">Tirar/escolher foto</button>
       </div>
     </div>
   </div>
@@ -127,373 +97,238 @@
   <div class="panel">
     <button class="drawer-tab" id="drawerTab">⚙ Ajustes ▾</button>
     <div class="ctrls" id="ctrls">
-      <div class="row">
-        <label>Sensibilidade</label>
-        <input type="range" id="sens" min="2" max="40" value="12">
-        <span class="val" id="sensV">12</span>
-      </div>
-      <div class="row">
-        <label>Espaçamento</label>
-        <input type="range" id="pitch" min="3" max="40" value="8">
-        <span class="val" id="pitchV">8</span>
-      </div>
-      <div class="row">
-        <label>Largura faixa</label>
-        <input type="range" id="width" min="10" max="120" value="46">
-        <span class="val" id="widthV">46</span>
-      </div>
-      <div class="row" style="justify-content:space-between">
-        <div class="toggle"><input type="checkbox" id="invert"><label for="invert" style="width:auto">Bordas claras</label></div>
-        <div class="toggle"><input type="checkbox" id="showProfile"><label for="showProfile" style="width:auto">Ver sinal</label></div>
-      </div>
+      <div class="row"><label>Sensibilidade</label><input type="range" id="sens" min="3" max="45" value="14"><span class="val" id="sensV">14</span></div>
+      <div class="row" data-mode="sweep"><label>Espaçamento</label><input type="range" id="gap" min="2" max="30" value="7"><span class="val" id="gapV">7</span></div>
+      <div class="row" data-mode="photo"><label>Espaçamento</label><input type="range" id="pitch" min="3" max="40" value="8"><span class="val" id="pitchV">8</span></div>
+      <div class="row" data-mode="photo"><label>Largura faixa</label><input type="range" id="bandw" min="10" max="140" value="50"><span class="val" id="bandwV">50</span></div>
+      <div class="row"><label>Direção da linha</label>
+        <div class="seg" id="orient"><button data-o="h" class="on">Horizontal ▬</button><button data-o="v">Vertical ▮</button></div></div>
+      <div class="row" data-mode="photo"><label>Bordas</label>
+        <div class="seg" id="polarity"><button data-p="0" class="on">Faces claras</button><button data-p="1">Faces escuras</button></div></div>
+      <div class="row" data-mode="sweep"><label>Retorno</label>
+        <div class="seg"><button id="sound" class="on">🔊 Som</button><button id="vibe" class="on">📳 Vibra</button></div></div>
     </div>
 
-    <div class="actions">
-      <button class="btn ghost" id="photoBtn">📷 Foto</button>
+    <div class="actions sweep" id="actionsSweep">
+      <div class="torchwrap"><button class="btn round" id="torchBtn" disabled>💡</button><small id="torchLbl">lanterna</small></div>
       <button class="btn round" id="minus">−</button>
-      <button class="btn primary" id="freezeBtn" style="border-radius:12px;width:auto;padding:0 18px;height:52px">Congelar</button>
+      <button class="btn primary" id="resetBtn">Zerar</button>
       <button class="btn round" id="plus">+</button>
-      <button class="btn ghost" id="copyBtn">Copiar</button>
+      <button class="btn round" id="pauseBtn">⏸</button>
+    </div>
+    <div class="actions photo hidden" id="actionsPhoto">
+      <button class="btn" id="retakeBtn">📷 Nova foto</button>
+      <button class="btn round" id="minusP">−</button>
+      <button class="btn primary" id="confirmBtn" style="padding:0 18px">Copiar</button>
+      <button class="btn round" id="plusP">+</button>
+      <div></div>
     </div>
   </div>
 
-  <input type="file" id="fileInput" accept="image/*" capture="environment">
+  <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
 
 <script>
 (() => {
-  const video = document.getElementById('video');
-  const still = document.getElementById('still');
-  const overlay = document.getElementById('overlay');
-  const octx = overlay.getContext('2d');
-  const work = document.createElement('canvas');
-  const wctx = work.getContext('2d', { willReadFrequently: true });
+  const $=id=>document.getElementById(id);
+  const video=$('video'), still=$('still'), overlay=$('overlay'), octx=overlay.getContext('2d');
+  const work=document.createElement('canvas'), wctx=work.getContext('2d',{willReadFrequently:true});
+  const countNum=$('countNum'), readout=$('readout'), hint=$('hint'), startMsg=$('startMsg');
+  const speedwarn=$('speedwarn'), torchBtn=$('torchBtn'), torchLbl=$('torchLbl'), fileInput=$('fileInput');
+  const S={sens:$('sens'),sensV:$('sensV'),gap:$('gap'),gapV:$('gapV'),pitch:$('pitch'),pitchV:$('pitchV'),
+    bandw:$('bandw'),bandwV:$('bandwV'),sound:$('sound'),vibe:$('vibe')};
 
-  const countNum = document.getElementById('countNum');
-  const statusPill = document.getElementById('statusPill');
-  const statusText = document.getElementById('statusText');
-  const hint = document.getElementById('hint');
-  const fpsEl = document.getElementById('fps');
-  const startMsg = document.getElementById('startMsg');
-  const fileInput = document.getElementById('fileInput');
+  const WORK_W=320, MAXSHIFT=14;
+  let mode='sweep', stream=null, track=null, torchOn=false, running=false, paused=false;
+  let orient='h', polarity=0, count=0;
+  // sweep signal
+  let baseline=null, state='low', distAccum=0, prevProfile=null, lastMotion=0;
+  const wave=[], WAVE_N=110; let audioCtx=null;
+  // photo
+  let bandCenter=0.5, photoLoaded=false;
 
-  const els = {
-    sens: document.getElementById('sens'), sensV: document.getElementById('sensV'),
-    pitch: document.getElementById('pitch'), pitchV: document.getElementById('pitchV'),
-    width: document.getElementById('width'), widthV: document.getElementById('widthV'),
-    invert: document.getElementById('invert'), showProfile: document.getElementById('showProfile'),
-  };
-
-  let mode = 'idle';        // 'live' | 'photo' | 'idle'
-  let frozen = false;
-  let manualOffset = 0;     // +/- correction applied by operator
-  let bandCenter = 0.5;     // normalized x position of scan band [0..1]
-  let lastAutoCount = 0;
-  let peaksNorm = [];       // detected peak positions (normalized y) for drawing
-  let stream = null;
-  let lastFrameT = 0, fpsAcc = 0, fpsN = 0;
-
-  const WORK_W = 360;       // processing width (downscaled for speed)
-
-  // ---------- source setup ----------
-  async function startCamera(){
-    try{
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width:{ideal:1280}, height:{ideal:720} },
-        audio: false
-      });
-      video.srcObject = stream;
-      await video.play();
-      video.style.display = 'block';
-      still.style.display = 'none';
-      mode = 'live'; frozen = false; manualOffset = 0;
-      startMsg.classList.add('hidden');
-      setStatus('live','ao vivo');
-      loop();
-    }catch(err){
-      showCameraError(err);
-    }
-  }
-
-  function usePhoto(){ fileInput.click(); }
-
-  fileInput.addEventListener('change', e => {
-    const f = e.target.files && e.target.files[0];
-    if(!f) return;
-    stopCamera();
-    const url = URL.createObjectURL(f);
-    still.onload = () => {
-      still.style.display = 'block';
-      video.style.display = 'none';
-      mode = 'photo'; frozen = false; manualOffset = 0;
-      startMsg.classList.add('hidden');
-      setStatus('frozen','foto');
-      sizeCanvases();
-      renderPhoto();
-    };
-    still.src = url;
-  });
-
-  function stopCamera(){
-    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
-    video.style.display='none';
-  }
-
-  function showCameraError(err){
+  // ---------- mode ----------
+  function setMode(m){
+    mode=m; count=0; countNum.textContent=0;
+    [...$('modeSwitch').children].forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+    document.querySelectorAll('[data-mode]').forEach(el=>el.style.display = el.dataset.mode===m ? '' : 'none');
+    $('actionsSweep').classList.toggle('hidden', m!=='sweep');
+    $('actionsPhoto').classList.toggle('hidden', m!=='photo');
+    running=false; if(stream) stopCam();
+    still.style.display='none'; video.style.display='none'; photoLoaded=false;
+    octx.clearRect(0,0,overlay.width,overlay.height);
     startMsg.classList.remove('hidden');
-    startMsg.querySelector('.box').innerHTML =
-      '<h2>Câmera indisponível</h2><p>O navegador bloqueou a câmera. Isso costuma acontecer quando a página não está em <b>HTTPS</b>. Você pode testar do mesmo jeito usando uma <b>foto</b> da pilha — o cálculo funciona igual.</p>'+
-      '<button class="btn primary" id="retry">Tentar câmera de novo</button>'+
-      '<button class="btn ghost" id="photo2" style="margin-top:8px">Usar uma foto</button>'+
-      '<p style="margin-top:14px;font-size:11px">Detalhe técnico: '+(err && err.name ? err.name : 'erro')+'</p>';
-    document.getElementById('retry').onclick = startCamera;
-    document.getElementById('photo2').onclick = usePhoto;
-    setStatus('','sem câmera');
+    if(m==='sweep'){ $('msgTitle').textContent='Modo Passar'; $('msgText').innerHTML='Ligue a câmera, encoste a linha na 1ª chapa e passe o celular <b>devagar</b> ao longo da pilha. Cada borda que cruza a linha conta +1.'; $('startCam').classList.remove('hidden'); $('startPhoto').classList.add('hidden'); }
+    else { $('msgTitle').textContent='Modo Foto'; $('msgText').innerHTML='Tire uma foto <b>nítida e reta</b> da lateral da pilha. Ele marca cada chapa — confira os riscos e ajuste com − / +.'; $('startCam').classList.add('hidden'); $('startPhoto').classList.remove('hidden'); }
   }
+  $('modeSwitch').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.m);});
 
-  function setStatus(cls, txt){
-    statusPill.className = 'pill' + (cls ? ' '+cls : '');
-    statusText.textContent = txt;
+  // ---------- camera ----------
+  async function startCam(){
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+      video.srcObject=stream; await video.play(); video.style.display='block'; still.style.display='none';
+      track=stream.getVideoTracks()[0]; startMsg.classList.add('hidden');
+      running=true; paused=false; baseline=null; state='low'; distAccum=0; prevProfile=null; setupTorch(); loop();
+    }catch(err){ camError(err); }
   }
+  function stopCam(){ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;} video.style.display='none'; }
+  function setupTorch(){ let ok=false; try{const c=track.getCapabilities?track.getCapabilities():{}; ok=!!c.torch;}catch(e){} torchBtn.disabled=!ok; torchLbl.textContent= ok?'lanterna':'iPhone: n/d'; }
+  async function toggleTorch(){ if(!track)return; torchOn=!torchOn; try{await track.applyConstraints({advanced:[{torch:torchOn}]}); torchBtn.classList.toggle('on',torchOn);}catch(e){torchOn=false;torchBtn.disabled=true;torchLbl.textContent='iPhone: n/d';} }
+  function camError(err){ startMsg.classList.remove('hidden'); startMsg.querySelector('.box').innerHTML='<h2>Câmera indisponível</h2><p>Confira se o endereço é <b>https</b> e se você permitiu a câmera.</p><button class="btn primary" id="retry" style="width:100%">Tentar de novo</button><p style="margin-top:12px;font-size:11px">'+(err&&err.name?err.name:'erro')+'</p>'; $('retry').onclick=startCam; }
+
+  // ---------- photo ----------
+  function pickPhoto(){ fileInput.click(); }
+  fileInput.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f)return; if(stream)stopCam();
+    const url=URL.createObjectURL(f); still.onload=()=>{ still.style.display='block'; video.style.display='none'; startMsg.classList.add('hidden'); photoLoaded=true; count=0; renderPhoto(); }; still.src=url; });
 
   // ---------- sizing ----------
-  function sizeCanvases(){
-    const r = overlay.getBoundingClientRect();
-    overlay.width = r.width; overlay.height = r.height;
-  }
-  window.addEventListener('resize', sizeCanvases);
+  function sizeCanvas(){ const r=overlay.getBoundingClientRect(); overlay.width=r.width; overlay.height=r.height; }
+  window.addEventListener('resize',sizeCanvas);
 
-  // ---------- the core: count sheet edges in the scan band ----------
-  function analyze(srcW, srcH, drawFrame){
-    // set work canvas to processing size preserving aspect
-    const scale = WORK_W / srcW;
-    const w = WORK_W, h = Math.max(1, Math.round(srcH * scale));
-    work.width = w; work.height = h;
-    wctx.drawImage(drawFrame, 0, 0, w, h);
-    const img = wctx.getImageData(0, 0, w, h).data;
+  // ---------- feedback ----------
+  function tick(){ readout.classList.add('bump'); setTimeout(()=>readout.classList.remove('bump'),120);
+    if(S.vibe.classList.contains('on')&&navigator.vibrate)navigator.vibrate(30);
+    if(S.sound.classList.contains('on'))beep(); }
+  function beep(){ try{ if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain(); o.frequency.value=880;o.type='sine';o.connect(g);g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.001,audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.25,audioCtx.currentTime+0.005);
+    g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.07); o.start();o.stop(audioCtx.currentTime+0.08);}catch(e){} }
 
-    const bandW = Math.max(4, Math.round((+els.width.value) * scale));
-    const cx = Math.round(bandCenter * w);
-    const x0 = Math.max(0, cx - (bandW>>1));
-    const x1 = Math.min(w, x0 + bandW);
+  // ---------- SWEEP: sample line brightness + estimate motion (speed-independent counting) ----------
+  function sweepFrame(){
+    const sw=video.videoWidth, sh=video.videoHeight; if(!sw)return null;
+    const scale=WORK_W/sw, w=WORK_W, h=Math.max(1,Math.round(sh*scale));
+    work.width=w;work.height=h; wctx.drawImage(video,0,0,w,h);
+    const d=wctx.getImageData(0,0,w,h).data;
+    const gray=(x,y)=>{const i=(y*w+x)*4;return 0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];};
 
-    // vertical intensity profile: average grayscale across band per row
-    const prof = new Float32Array(h);
-    for(let y=0;y<h;y++){
-      let sum=0, n=0;
-      const base = y*w*4;
-      for(let x=x0;x<x1;x++){
-        const i = base + x*4;
-        sum += 0.299*img[i] + 0.587*img[i+1] + 0.114*img[i+2];
-        n++;
-      }
-      prof[y] = n ? sum/n : 0;
+    // brightness at the counting line
+    let x0,x1,y0,y1;
+    if(orient==='h'){const cy=h>>1,hh=Math.max(1,Math.round(h*0.012));y0=cy-hh;y1=cy+hh;x0=Math.round(w*0.22);x1=Math.round(w*0.78);}
+    else{const cx=w>>1,hw=Math.max(1,Math.round(w*0.012));x0=cx-hw;x1=cx+hw;y0=Math.round(h*0.22);y1=Math.round(h*0.78);}
+    let sum=0,n=0; for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){sum+=gray(x,y);n++;} const B=n?sum/n:0;
+
+    // motion estimate along sweep axis (1D correlation of a center profile)
+    let profile;
+    if(orient==='h'){ const cx=w>>1; const L=Math.round(h*0.6), s=Math.round(h*0.2); profile=new Float32Array(L);
+      for(let k=0;k<L;k++){let g=0;for(let x=cx-3;x<=cx+3;x++)g+=gray(x,s+k);profile[k]=g/7;} }
+    else{ const cy=h>>1; const L=Math.round(w*0.6), s=Math.round(w*0.2); profile=new Float32Array(L);
+      for(let k=0;k<L;k++){let g=0;for(let y=cy-3;y<=cy+3;y++)g+=gray(s+k,y);profile[k]=g/7;} }
+    let motion=0;
+    if(prevProfile&&prevProfile.length===profile.length){
+      let best=1e12,bestS=0; const L=profile.length;
+      for(let sft=-MAXSHIFT;sft<=MAXSHIFT;sft++){ let sad=0,c=0;
+        for(let k=0;k<L;k++){const j=k+sft; if(j<0||j>=L)continue; sad+=Math.abs(profile[k]-prevProfile[j]);c++;}
+        if(c>L*0.5){sad/=c; if(sad<best){best=sad;bestS=sft;}} }
+      motion=bestS;
     }
-
-    // smooth (moving average) — window tied to spacing
-    const pitch = Math.max(2, Math.round((+els.pitch.value) * scale));
-    const sm = smooth(prof, Math.max(1, pitch>>1));
-
-    // we count bright bands = sheet faces. If "bordas claras", invert.
-    const signal = els.invert.checked ? sm.map(v => 255 - v) : sm.slice();
-
-    const prom = +els.sens.value; // required prominence
-    const peaks = findPeaks(signal, pitch, prom);
-
-    lastAutoCount = peaks.length;
-    peaksNorm = peaks.map(p => p / h);
-
-    return { signal, h, x0:x0/w, x1:x1/w };
+    prevProfile=profile; lastMotion=Math.abs(motion);
+    return {B,motion,w,h};
   }
 
-  function smooth(arr, r){
-    if(r<=1) return Array.from(arr);
-    const n=arr.length, out=new Array(n);
-    let acc=0; const win=r*2+1;
-    for(let i=0;i<n;i++){
-      acc += arr[i];
-      if(i>=win) acc -= arr[i-win];
-      const cnt = Math.min(i+1, win);
-      out[i] = acc/cnt;
-    }
-    // second pass to reduce phase shift
-    let acc2=0; const out2=new Array(n);
-    for(let i=n-1;i>=0;i--){
-      acc2 += out[i];
-      if(i<=n-1-win) acc2 -= out[i+win];
-      const cnt = Math.min(n-i, win);
-      out2[i] = acc2/cnt;
-    }
-    return out2;
+  function sweepProcess(f){
+    const B=f.B; baseline= baseline==null?B:baseline*0.93+B*0.07;
+    const margin=+S.sens.value; const gate=+S.gap.value;
+    const tooFast = lastMotion > MAXSHIFT-2;
+    speedwarn.classList.toggle('show', tooFast);
+    distAccum += lastMotion;
+    if(state==='low' && B>baseline+margin){
+      state='high';
+      if(distAccum>=gate && !tooFast && !paused){ count++; countNum.textContent=count; distAccum=0; tick(); }
+    } else if(state==='high' && B<baseline-margin){ state='low'; }
+    wave.push(B); if(wave.length>WAVE_N)wave.shift();
   }
 
-  function findPeaks(arr, minDist, minProm){
-    const n = arr.length;
-    const cands = [];
-    for(let i=1;i<n-1;i++){
-      if(arr[i] >= arr[i-1] && arr[i] > arr[i+1]){
-        // prominence vs local minima within minDist window
-        let lo = Math.max(0, i-minDist), hi = Math.min(n-1, i+minDist);
-        let minL = arr[i], minR = arr[i];
-        for(let k=i;k>=lo;k--) minL = Math.min(minL, arr[k]);
-        for(let k=i;k<=hi;k++) minR = Math.min(minR, arr[k]);
-        const prom = arr[i] - Math.max(minL, minR);
-        if(prom >= minProm) cands.push({ i, v: arr[i], prom });
-      }
-    }
-    // greedy: strongest first, reject those too close to an accepted peak
-    cands.sort((a,b)=> b.prom - a.prom);
-    const accepted = [];
-    for(const c of cands){
-      if(accepted.every(a => Math.abs(a - c.i) >= minDist)) accepted.push(c.i);
-    }
-    accepted.sort((a,b)=>a-b);
-    return accepted;
+  function sweepDraw(){
+    const W=overlay.width,H=overlay.height; octx.clearRect(0,0,W,H);
+    const hot=readout.classList.contains('bump');
+    octx.strokeStyle=hot?'#F5B841':'#38E0C8'; octx.shadowColor=octx.strokeStyle; octx.shadowBlur=hot?18:8; octx.lineWidth=hot?4:2.5;
+    octx.beginPath();
+    if(orient==='h'){const y=H*0.5;octx.moveTo(W*0.10,y);octx.lineTo(W*0.90,y);}else{const x=W*0.5;octx.moveTo(x,H*0.10);octx.lineTo(x,H*0.90);}
+    octx.stroke(); octx.shadowBlur=0;
+    if(wave.length>2&&baseline!=null){ const bw=110,bh=42,bx=12,by=H-58;
+      octx.fillStyle='rgba(14,17,22,0.6)';octx.fillRect(bx,by,bw,bh);
+      let mn=Infinity,mx=-Infinity;for(const v of wave){if(v<mn)mn=v;if(v>mx)mx=v;} const rng=(mx-mn)||1; const yOf=v=>by+bh-((v-mn)/rng)*bh; const m=+S.sens.value;
+      octx.strokeStyle='rgba(245,184,65,0.5)';octx.lineWidth=1;
+      octx.beginPath();octx.moveTo(bx,yOf(baseline+m));octx.lineTo(bx+bw,yOf(baseline+m));octx.stroke();
+      octx.beginPath();octx.moveTo(bx,yOf(baseline-m));octx.lineTo(bx+bw,yOf(baseline-m));octx.stroke();
+      octx.strokeStyle='#38E0C8';octx.beginPath();wave.forEach((v,i)=>{const x=bx+(i/(WAVE_N-1))*bw;i?octx.lineTo(x,yOf(v)):octx.moveTo(x,yOf(v));});octx.stroke(); }
   }
 
-  // ---------- drawing ----------
-  function drawOverlay(meta){
-    const W = overlay.width, H = overlay.height;
-    octx.clearRect(0,0,W,H);
-    if(!meta) return;
+  // ---------- PHOTO: static peak count on a band ----------
+  function smooth(a,r){ if(r<=1)return Array.from(a); const n=a.length,o=new Array(n); let acc=0,win=r*2+1;
+    for(let i=0;i<n;i++){acc+=a[i];if(i>=win)acc-=a[i-win];o[i]=acc/Math.min(i+1,win);} let a2=0,o2=new Array(n);
+    for(let i=n-1;i>=0;i--){a2+=o[i];if(i<=n-1-win)a2-=o[i+win];o2[i]=a2/Math.min(n-i,win);} return o2; }
+  function findPeaks(a,minD,minP){ const n=a.length,cs=[];
+    for(let i=1;i<n-1;i++){ if(a[i]>=a[i-1]&&a[i]>a[i+1]){ let lo=Math.max(0,i-minD),hi=Math.min(n-1,i+minD),mL=a[i],mR=a[i];
+      for(let k=i;k>=lo;k--)mL=Math.min(mL,a[k]); for(let k=i;k<=hi;k++)mR=Math.min(mR,a[k]);
+      const p=a[i]-Math.max(mL,mR); if(p>=minP)cs.push({i,p}); } }
+    cs.sort((x,y)=>y.p-x.p); const acc=[]; for(const c of cs){ if(acc.every(x=>Math.abs(x-c.i)>=minD))acc.push(c.i); } acc.sort((x,y)=>x-y); return acc; }
 
-    const bandLpx = meta.x0 * W;
-    const bandRpx = meta.x1 * W;
-
-    // scan band
-    octx.fillStyle = 'rgba(245,184,65,0.10)';
-    octx.fillRect(bandLpx, 0, bandRpx-bandLpx, H);
-    octx.strokeStyle = 'rgba(245,184,65,0.7)';
-    octx.lineWidth = 1.5;
-    octx.beginPath(); octx.moveTo(bandLpx,0); octx.lineTo(bandLpx,H);
-    octx.moveTo(bandRpx,0); octx.lineTo(bandRpx,H); octx.stroke();
-
-    // drag handles
-    octx.fillStyle = 'rgba(245,184,65,0.9)';
-    const cxpx = (bandLpx+bandRpx)/2;
-    octx.beginPath(); octx.arc(cxpx, H*0.5, 12, 0, Math.PI*2); octx.fill();
-    octx.fillStyle='#1a1400'; octx.font='bold 13px var(--mono)'; octx.textAlign='center';
-    octx.fillText('↔', cxpx, H*0.5+4);
-
-    // detected sheet ticks
-    octx.strokeStyle = '#38E0C8';
-    octx.lineWidth = 2;
-    for(const py of peaksNorm){
-      const y = py * H;
-      octx.beginPath();
-      octx.moveTo(bandLpx-6, y); octx.lineTo(bandRpx+6, y);
-      octx.stroke();
-    }
-
-    // optional signal plot
-    if(els.showProfile.checked && meta.signal){
-      const sig = meta.signal, n = sig.length;
-      let mn=Infinity, mx=-Infinity;
-      for(const v of sig){ if(v<mn)mn=v; if(v>mx)mx=v; }
-      const range = (mx-mn)||1;
-      octx.strokeStyle='rgba(56,224,200,0.5)'; octx.lineWidth=1;
-      octx.beginPath();
-      for(let i=0;i<n;i++){
-        const y=(i/n)*H;
-        const x=bandRpx+10 + ((sig[i]-mn)/range)*Math.min(70, W-bandRpx-16);
-        i? octx.lineTo(x,y):octx.moveTo(x,y);
-      }
-      octx.stroke();
-    }
-  }
-
-  function refreshCount(){
-    const c = Math.max(0, lastAutoCount + manualOffset);
-    countNum.textContent = c;
-  }
-
-  // ---------- loops ----------
-  function loop(){
-    if(mode!=='live'){ return; }
-    if(!frozen && video.readyState >= 2){
-      sizeCanvases();
-      const meta = analyze(video.videoWidth, video.videoHeight, video);
-      drawOverlay(meta);
-      refreshCount();
-      // fps
-      const t = performance.now();
-      if(lastFrameT){ fpsAcc += 1000/(t-lastFrameT); fpsN++; if(fpsN>=15){ fpsEl.textContent = Math.round(fpsAcc/fpsN)+' fps'; fpsAcc=0; fpsN=0; } }
-      lastFrameT = t;
-    }
-    requestAnimationFrame(loop);
-  }
-
+  let photoPeaks=[], photoMeta=null;
   function renderPhoto(){
-    if(mode!=='photo') return;
-    sizeCanvases();
-    const meta = analyze(still.naturalWidth, still.naturalHeight, still);
-    drawOverlay(meta);
-    refreshCount();
+    if(!photoLoaded)return; sizeCanvas();
+    const sw=still.naturalWidth,sh=still.naturalHeight; const scale=WORK_W/sw,w=WORK_W,h=Math.max(1,Math.round(sh*scale));
+    work.width=w;work.height=h; wctx.drawImage(still,0,0,w,h); const d=wctx.getImageData(0,0,w,h).data;
+    const bandW=Math.max(4,Math.round((+S.bandw.value)*scale));
+    let peaks;
+    if(orient==='h'){ // horizontal edges -> profile down rows
+      const cx=Math.round(bandCenter*w),x0=Math.max(0,cx-(bandW>>1)),x1=Math.min(w,x0+bandW); const prof=new Float32Array(h);
+      for(let y=0;y<h;y++){let s=0,n=0;const b=y*w*4;for(let x=x0;x<x1;x++){const i=b+x*4;s+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];n++;}prof[y]=n?s/n:0;}
+      const pitch=Math.max(2,Math.round((+S.pitch.value)*scale)); let sm=smooth(prof,Math.max(1,pitch>>1));
+      if(polarity)sm=sm.map(v=>255-v); peaks=findPeaks(sm,pitch,+S.sens.value); photoPeaks=peaks.map(p=>({t:p/h,band:[x0/w,x1/w]}));
+    }else{
+      const cy=Math.round(bandCenter*h),y0=Math.max(0,cy-(bandW>>1)),y1=Math.min(h,y0+bandW); const prof=new Float32Array(w);
+      for(let x=0;x<w;x++){let s=0,n=0;for(let y=y0;y<y1;y++){const i=(y*w+x)*4;s+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];n++;}prof[x]=n?s/n:0;}
+      const pitch=Math.max(2,Math.round((+S.pitch.value)*scale)); let sm=smooth(prof,Math.max(1,pitch>>1));
+      if(polarity)sm=sm.map(v=>255-v); peaks=findPeaks(sm,pitch,+S.sens.value); photoPeaks=peaks.map(p=>({t:p/w,band:[y0/h,y1/h]}));
+    }
+    count=peaks.length; countNum.textContent=count; drawPhoto();
+  }
+  function drawPhoto(){
+    const W=overlay.width,H=overlay.height; octx.clearRect(0,0,W,H); if(!photoPeaks.length)return;
+    const band=photoPeaks[0].band;
+    octx.fillStyle='rgba(245,184,65,0.10)'; octx.strokeStyle='rgba(245,184,65,0.7)'; octx.lineWidth=1.5;
+    if(orient==='h'){ const l=band[0]*W,r=band[1]*W; octx.fillRect(l,0,r-l,H); octx.strokeRect(l,0,r-l,H);
+      octx.strokeStyle='#38E0C8';octx.lineWidth=2; for(const p of photoPeaks){const y=p.t*H;octx.beginPath();octx.moveTo(l-6,y);octx.lineTo(r+6,y);octx.stroke();} }
+    else{ const t=band[0]*H,b=band[1]*H; octx.fillRect(0,t,W,b-t); octx.strokeRect(0,t,W,b-t);
+      octx.strokeStyle='#38E0C8';octx.lineWidth=2; for(const p of photoPeaks){const x=p.t*W;octx.beginPath();octx.moveTo(x,t-6);octx.lineTo(x,b+6);octx.stroke();} }
   }
 
-  function reprocess(){
-    if(mode==='photo') renderPhoto();
-    // live mode reprocesses automatically each frame
-  }
+  // ---------- loop ----------
+  function loop(){ if(!running||mode!=='sweep')return; if(video.readyState>=2){ sizeCanvas(); const f=sweepFrame(); if(f){sweepProcess(f);sweepDraw();} } requestAnimationFrame(loop); }
 
-  // ---------- band dragging ----------
-  function pointerX(e){
-    const r = overlay.getBoundingClientRect();
-    const x = (e.touches? e.touches[0].clientX : e.clientX) - r.left;
-    return Math.max(0, Math.min(1, x / r.width));
-  }
-  let dragging=false;
-  function onDown(e){ dragging=true; bandCenter=pointerX(e); reprocess(); e.preventDefault(); }
-  function onMove(e){ if(!dragging)return; bandCenter=pointerX(e); reprocess(); e.preventDefault(); }
-  function onUp(){ dragging=false; }
-  overlay.addEventListener('mousedown', onDown);
-  overlay.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
-  overlay.addEventListener('touchstart', onDown, {passive:false});
-  overlay.addEventListener('touchmove', onMove, {passive:false});
-  overlay.addEventListener('touchend', onUp);
+  // ---------- band drag (photo) ----------
+  function normPos(e,axis){ const r=overlay.getBoundingClientRect(); const p=e.touches?e.touches[0]:e;
+    return axis==='x'?Math.max(0,Math.min(1,(p.clientX-r.left)/r.width)):Math.max(0,Math.min(1,(p.clientY-r.top)/r.height)); }
+  let drag=false;
+  function down(e){ if(mode!=='photo'||!photoLoaded)return; drag=true; bandCenter=normPos(e,orient==='h'?'x':'y'); renderPhoto(); e.preventDefault(); }
+  function move(e){ if(!drag)return; bandCenter=normPos(e,orient==='h'?'x':'y'); renderPhoto(); e.preventDefault(); }
+  overlay.addEventListener('mousedown',down); overlay.addEventListener('mousemove',move); window.addEventListener('mouseup',()=>drag=false);
+  overlay.addEventListener('touchstart',down,{passive:false}); overlay.addEventListener('touchmove',move,{passive:false}); overlay.addEventListener('touchend',()=>drag=false);
 
   // ---------- controls ----------
-  function bindSlider(el, valEl){
-    const upd=()=>{ valEl.textContent = el.value; reprocess(); };
-    el.addEventListener('input', upd); upd();
-  }
-  bindSlider(els.sens, els.sensV);
-  bindSlider(els.pitch, els.pitchV);
-  bindSlider(els.width, els.widthV);
-  els.invert.addEventListener('change', reprocess);
-  els.showProfile.addEventListener('change', reprocess);
+  function bind(el,v){const u=()=>{v.textContent=el.value; if(mode==='photo')renderPhoto();};el.addEventListener('input',u);u();}
+  bind(S.sens,S.sensV);bind(S.gap,S.gapV);bind(S.pitch,S.pitchV);bind(S.bandw,S.bandwV);
+  $('orient').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;orient=b.dataset.o;[...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));if(mode==='photo')renderPhoto();});
+  $('polarity').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;polarity=+b.dataset.p;[...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));if(mode==='photo')renderPhoto();});
+  function tog(el){el.classList.toggle('on');}
+  S.sound.addEventListener('click',()=>{tog(S.sound);if(S.sound.classList.contains('on'))beep();});
+  S.vibe.addEventListener('click',()=>{tog(S.vibe);if(S.vibe.classList.contains('on')&&navigator.vibrate)navigator.vibrate(30);});
+  $('drawerTab').addEventListener('click',function(){const c=$('ctrls');c.classList.toggle('open');this.textContent=c.classList.contains('open')?'⚙ Ajustes ▴':'⚙ Ajustes ▾';});
+  torchBtn.addEventListener('click',toggleTorch);
+  $('minus').addEventListener('click',()=>{count=Math.max(0,count-1);countNum.textContent=count;});
+  $('plus').addEventListener('click',()=>{count++;countNum.textContent=count;});
+  $('resetBtn').addEventListener('click',()=>{count=0;baseline=null;wave.length=0;state='low';distAccum=0;countNum.textContent=0;});
+  $('pauseBtn').addEventListener('click',function(){paused=!paused;this.classList.toggle('on',paused);this.textContent=paused?'▶':'⏸';hint.textContent=paused?'Pausado — toque ▶ para retomar.':'Passe o celular devagar pela lateral da pilha.';});
+  $('minusP').addEventListener('click',()=>{count=Math.max(0,count-1);countNum.textContent=count;});
+  $('plusP').addEventListener('click',()=>{count++;countNum.textContent=count;});
+  $('confirmBtn').addEventListener('click',function(){if(navigator.clipboard)navigator.clipboard.writeText(String(count));const o=this.textContent;this.textContent='✓';setTimeout(()=>this.textContent=o,900);});
+  $('retakeBtn').addEventListener('click',pickPhoto);
+  $('startCam').addEventListener('click',startCam);
+  $('startPhoto').addEventListener('click',pickPhoto);
 
-  document.getElementById('drawerTab').addEventListener('click', function(){
-    const c = document.getElementById('ctrls');
-    c.classList.toggle('open');
-    this.textContent = c.classList.contains('open') ? '⚙ Ajustes ▴' : '⚙ Ajustes ▾';
-  });
-
-  document.getElementById('freezeBtn').addEventListener('click', function(){
-    if(mode==='photo') return; // photo is already static
-    frozen = !frozen;
-    this.textContent = frozen ? 'Retomar' : 'Congelar';
-    setStatus(frozen?'frozen':'live', frozen?'congelado':'ao vivo');
-    hint.textContent = frozen
-      ? 'Congelado. Confira as marcas e corrija com − / + se faltou ou sobrou alguma.'
-      : 'Aponte a faixa na lateral da pilha e arraste-a para centralizar nas bordas.';
-  });
-
-  document.getElementById('minus').addEventListener('click', ()=>{ manualOffset--; refreshCount(); });
-  document.getElementById('plus').addEventListener('click', ()=>{ manualOffset++; refreshCount(); });
-  document.getElementById('photoBtn').addEventListener('click', usePhoto);
-
-  document.getElementById('copyBtn').addEventListener('click', function(){
-    const v = countNum.textContent;
-    if(navigator.clipboard) navigator.clipboard.writeText(v);
-    const old=this.textContent; this.textContent='✓'; setTimeout(()=>this.textContent=old,900);
-  });
-
-  document.getElementById('startCam').addEventListener('click', startCamera);
-  document.getElementById('startPhoto').addEventListener('click', usePhoto);
-
-  sizeCanvases();
-  setStatus('','pronto');
+  sizeCanvas(); setMode('sweep');
 })();
 </script>
 </body>
