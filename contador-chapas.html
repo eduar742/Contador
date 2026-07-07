@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Contador de Chapas — leitura por vídeo</title>
+<style>
+  :root{
+    --bg:#0E1116; --surface:#171B22; --surface2:#1E232C; --line:#2A2F3A;
+    --text:#E8EAED; --muted:#8A929E; --accent:#F5B841; --edge:#38E0C8;
+    --warn:#E0653A; --mono:ui-monospace,"SF Mono","Roboto Mono",Menlo,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);color:var(--text);font-family:var(--sans);
+    display:flex;flex-direction:column;overflow:hidden;
+    -webkit-tap-highlight-color:transparent;
+  }
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;
+  }
+  header .title{font-size:13px;font-weight:600;letter-spacing:.2px}
+  header .title span{color:var(--muted);font-weight:400}
+  .pill{
+    font-family:var(--mono);font-size:10px;letter-spacing:.5px;text-transform:uppercase;
+    padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);
+    display:flex;align-items:center;gap:6px;white-space:nowrap;
+  }
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--muted)}
+  .pill.live .dot{background:var(--edge);box-shadow:0 0 6px var(--edge)}
+  .pill.frozen .dot{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+
+  .stage{position:relative;flex:1 1 auto;background:#000;overflow:hidden;min-height:0}
+  #video,#still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+  #overlay{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+
+  /* big count readout floating over the stage */
+  .readout{
+    position:absolute;top:12px;left:12px;z-index:3;
+    background:rgba(14,17,22,.72);backdrop-filter:blur(4px);
+    border:1px solid var(--line);border-radius:14px;padding:10px 14px;
+    display:flex;align-items:baseline;gap:8px;pointer-events:none;
+  }
+  .readout .num{font-family:var(--mono);font-size:52px;font-weight:600;line-height:.9;color:var(--accent);letter-spacing:-1px}
+  .readout .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+
+  .hint{
+    position:absolute;bottom:12px;left:12px;right:12px;z-index:3;text-align:center;
+    font-size:12px;color:var(--muted);background:rgba(14,17,22,.6);
+    border-radius:8px;padding:6px 10px;pointer-events:none;
+  }
+
+  /* controls drawer */
+  .panel{flex:0 0 auto;background:var(--surface);border-top:1px solid var(--line)}
+  .ctrls{padding:12px 14px 4px;display:none;gap:14px;flex-direction:column}
+  .ctrls.open{display:flex}
+  .row{display:flex;align-items:center;gap:12px}
+  .row label{font-size:12px;color:var(--muted);width:96px;flex:0 0 auto}
+  .row .val{font-family:var(--mono);font-size:12px;color:var(--text);width:42px;text-align:right;flex:0 0 auto}
+  input[type=range]{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-radius:50%;background:var(--accent)}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text)}
+  .toggle input{width:18px;height:18px;accent-color:var(--accent)}
+
+  .drawer-tab{
+    width:100%;background:none;border:none;color:var(--muted);font-size:11px;
+    letter-spacing:.5px;text-transform:uppercase;padding:8px;cursor:pointer;font-family:var(--sans);
+  }
+
+  .actions{
+    display:grid;grid-template-columns:1fr auto auto auto 1fr;gap:8px;align-items:center;
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);
+  }
+  .btn{
+    border:1px solid var(--line);background:var(--surface2);color:var(--text);
+    font-family:var(--sans);font-size:13px;font-weight:600;border-radius:12px;
+    padding:12px 10px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;
+    -webkit-user-select:none;user-select:none;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--accent);color:#1a1400;border-color:var(--accent)}
+  .btn.round{width:52px;height:52px;border-radius:50%;font-size:24px;font-weight:400;padding:0}
+  .btn.ghost{background:none}
+  .btn:disabled{opacity:.4;cursor:default}
+  .hidden{display:none!important}
+
+  .overlay-msg{
+    position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;
+    padding:24px;text-align:center;background:rgba(14,17,22,.9);
+  }
+  .overlay-msg .box{max-width:340px}
+  .overlay-msg h2{font-size:16px;margin-bottom:10px}
+  .overlay-msg p{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:18px}
+  #fileInput{display:none}
+  .fps{position:absolute;top:12px;right:12px;z-index:3;font-family:var(--mono);font-size:9px;color:var(--muted);opacity:.6}
+</style>
+</head>
+<body>
+  <header>
+    <div class="title">Contador de Chapas <span>· leitura por vídeo</span></div>
+    <div class="pill" id="statusPill"><span class="dot"></span><span id="statusText">iniciando</span></div>
+  </header>
+
+  <div class="stage" id="stage">
+    <video id="video" playsinline muted autoplay></video>
+    <img id="still" alt="foto da pilha">
+    <canvas id="overlay"></canvas>
+
+    <div class="readout"><span class="num" id="countNum">0</span><span class="lbl">chapas</span></div>
+    <div class="fps" id="fps"></div>
+    <div class="hint" id="hint">Aponte a faixa na lateral da pilha e arraste-a para centralizar nas bordas.</div>
+
+    <div class="overlay-msg" id="startMsg">
+      <div class="box">
+        <h2>Como usar</h2>
+        <p>Aponte a câmera para a <b>lateral</b> da pilha, de forma que dê pra ver as linhas de cada chapa. A faixa amarela é onde ele conta — arraste para alinhar. Ajuste <b>sensibilidade</b> e <b>espaçamento</b> até o número bater, depois <b>congele</b> pra ler.</p>
+        <button class="btn primary" id="startCam">Ligar câmera</button>
+        <button class="btn ghost" id="startPhoto" style="margin-top:8px">Usar uma foto</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <button class="drawer-tab" id="drawerTab">⚙ Ajustes ▾</button>
+    <div class="ctrls" id="ctrls">
+      <div class="row">
+        <label>Sensibilidade</label>
+        <input type="range" id="sens" min="2" max="40" value="12">
+        <span class="val" id="sensV">12</span>
+      </div>
+      <div class="row">
+        <label>Espaçamento</label>
+        <input type="range" id="pitch" min="3" max="40" value="8">
+        <span class="val" id="pitchV">8</span>
+      </div>
+      <div class="row">
+        <label>Largura faixa</label>
+        <input type="range" id="width" min="10" max="120" value="46">
+        <span class="val" id="widthV">46</span>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <div class="toggle"><input type="checkbox" id="invert"><label for="invert" style="width:auto">Bordas claras</label></div>
+        <div class="toggle"><input type="checkbox" id="showProfile"><label for="showProfile" style="width:auto">Ver sinal</label></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn ghost" id="photoBtn">📷 Foto</button>
+      <button class="btn round" id="minus">−</button>
+      <button class="btn primary" id="freezeBtn" style="border-radius:12px;width:auto;padding:0 18px;height:52px">Congelar</button>
+      <button class="btn round" id="plus">+</button>
+      <button class="btn ghost" id="copyBtn">Copiar</button>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept="image/*" capture="environment">
+
+<script>
+(() => {
+  const video = document.getElementById('video');
+  const still = document.getElementById('still');
+  const overlay = document.getElementById('overlay');
+  const octx = overlay.getContext('2d');
+  const work = document.createElement('canvas');
+  const wctx = work.getContext('2d', { willReadFrequently: true });
+
+  const countNum = document.getElementById('countNum');
+  const statusPill = document.getElementById('statusPill');
+  const statusText = document.getElementById('statusText');
+  const hint = document.getElementById('hint');
+  const fpsEl = document.getElementById('fps');
+  const startMsg = document.getElementById('startMsg');
+  const fileInput = document.getElementById('fileInput');
+
+  const els = {
+    sens: document.getElementById('sens'), sensV: document.getElementById('sensV'),
+    pitch: document.getElementById('pitch'), pitchV: document.getElementById('pitchV'),
+    width: document.getElementById('width'), widthV: document.getElementById('widthV'),
+    invert: document.getElementById('invert'), showProfile: document.getElementById('showProfile'),
+  };
+
+  let mode = 'idle';        // 'live' | 'photo' | 'idle'
+  let frozen = false;
+  let manualOffset = 0;     // +/- correction applied by operator
+  let bandCenter = 0.5;     // normalized x position of scan band [0..1]
+  let lastAutoCount = 0;
+  let peaksNorm = [];       // detected peak positions (normalized y) for drawing
+  let stream = null;
+  let lastFrameT = 0, fpsAcc = 0, fpsN = 0;
+
+  const WORK_W = 360;       // processing width (downscaled for speed)
+
+  // ---------- source setup ----------
+  async function startCamera(){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width:{ideal:1280}, height:{ideal:720} },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      video.style.display = 'block';
+      still.style.display = 'none';
+      mode = 'live'; frozen = false; manualOffset = 0;
+      startMsg.classList.add('hidden');
+      setStatus('live','ao vivo');
+      loop();
+    }catch(err){
+      showCameraError(err);
+    }
+  }
+
+  function usePhoto(){ fileInput.click(); }
+
+  fileInput.addEventListener('change', e => {
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    stopCamera();
+    const url = URL.createObjectURL(f);
+    still.onload = () => {
+      still.style.display = 'block';
+      video.style.display = 'none';
+      mode = 'photo'; frozen = false; manualOffset = 0;
+      startMsg.classList.add('hidden');
+      setStatus('frozen','foto');
+      sizeCanvases();
+      renderPhoto();
+    };
+    still.src = url;
+  });
+
+  function stopCamera(){
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+    video.style.display='none';
+  }
+
+  function showCameraError(err){
+    startMsg.classList.remove('hidden');
+    startMsg.querySelector('.box').innerHTML =
+      '<h2>Câmera indisponível</h2><p>O navegador bloqueou a câmera. Isso costuma acontecer quando a página não está em <b>HTTPS</b>. Você pode testar do mesmo jeito usando uma <b>foto</b> da pilha — o cálculo funciona igual.</p>'+
+      '<button class="btn primary" id="retry">Tentar câmera de novo</button>'+
+      '<button class="btn ghost" id="photo2" style="margin-top:8px">Usar uma foto</button>'+
+      '<p style="margin-top:14px;font-size:11px">Detalhe técnico: '+(err && err.name ? err.name : 'erro')+'</p>';
+    document.getElementById('retry').onclick = startCamera;
+    document.getElementById('photo2').onclick = usePhoto;
+    setStatus('','sem câmera');
+  }
+
+  function setStatus(cls, txt){
+    statusPill.className = 'pill' + (cls ? ' '+cls : '');
+    statusText.textContent = txt;
+  }
+
+  // ---------- sizing ----------
+  function sizeCanvases(){
+    const r = overlay.getBoundingClientRect();
+    overlay.width = r.width; overlay.height = r.height;
+  }
+  window.addEventListener('resize', sizeCanvases);
+
+  // ---------- the core: count sheet edges in the scan band ----------
+  function analyze(srcW, srcH, drawFrame){
+    // set work canvas to processing size preserving aspect
+    const scale = WORK_W / srcW;
+    const w = WORK_W, h = Math.max(1, Math.round(srcH * scale));
+    work.width = w; work.height = h;
+    wctx.drawImage(drawFrame, 0, 0, w, h);
+    const img = wctx.getImageData(0, 0, w, h).data;
+
+    const bandW = Math.max(4, Math.round((+els.width.value) * scale));
+    const cx = Math.round(bandCenter * w);
+    const x0 = Math.max(0, cx - (bandW>>1));
+    const x1 = Math.min(w, x0 + bandW);
+
+    // vertical intensity profile: average grayscale across band per row
+    const prof = new Float32Array(h);
+    for(let y=0;y<h;y++){
+      let sum=0, n=0;
+      const base = y*w*4;
+      for(let x=x0;x<x1;x++){
+        const i = base + x*4;
+        sum += 0.299*img[i] + 0.587*img[i+1] + 0.114*img[i+2];
+        n++;
+      }
+      prof[y] = n ? sum/n : 0;
+    }
+
+    // smooth (moving average) — window tied to spacing
+    const pitch = Math.max(2, Math.round((+els.pitch.value) * scale));
+    const sm = smooth(prof, Math.max(1, pitch>>1));
+
+    // we count bright bands = sheet faces. If "bordas claras", invert.
+    const signal = els.invert.checked ? sm.map(v => 255 - v) : sm.slice();
+
+    const prom = +els.sens.value; // required prominence
+    const peaks = findPeaks(signal, pitch, prom);
+
+    lastAutoCount = peaks.length;
+    peaksNorm = peaks.map(p => p / h);
+
+    return { signal, h, x0:x0/w, x1:x1/w };
+  }
+
+  function smooth(arr, r){
+    if(r<=1) return Array.from(arr);
+    const n=arr.length, out=new Array(n);
+    let acc=0; const win=r*2+1;
+    for(let i=0;i<n;i++){
+      acc += arr[i];
+      if(i>=win) acc -= arr[i-win];
+      const cnt = Math.min(i+1, win);
+      out[i] = acc/cnt;
+    }
+    // second pass to reduce phase shift
+    let acc2=0; const out2=new Array(n);
+    for(let i=n-1;i>=0;i--){
+      acc2 += out[i];
+      if(i<=n-1-win) acc2 -= out[i+win];
+      const cnt = Math.min(n-i, win);
+      out2[i] = acc2/cnt;
+    }
+    return out2;
+  }
+
+  function findPeaks(arr, minDist, minProm){
+    const n = arr.length;
+    const cands = [];
+    for(let i=1;i<n-1;i++){
+      if(arr[i] >= arr[i-1] && arr[i] > arr[i+1]){
+        // prominence vs local minima within minDist window
+        let lo = Math.max(0, i-minDist), hi = Math.min(n-1, i+minDist);
+        let minL = arr[i], minR = arr[i];
+        for(let k=i;k>=lo;k--) minL = Math.min(minL, arr[k]);
+        for(let k=i;k<=hi;k++) minR = Math.min(minR, arr[k]);
+        const prom = arr[i] - Math.max(minL, minR);
+        if(prom >= minProm) cands.push({ i, v: arr[i], prom });
+      }
+    }
+    // greedy: strongest first, reject those too close to an accepted peak
+    cands.sort((a,b)=> b.prom - a.prom);
+    const accepted = [];
+    for(const c of cands){
+      if(accepted.every(a => Math.abs(a - c.i) >= minDist)) accepted.push(c.i);
+    }
+    accepted.sort((a,b)=>a-b);
+    return accepted;
+  }
+
+  // ---------- drawing ----------
+  function drawOverlay(meta){
+    const W = overlay.width, H = overlay.height;
+    octx.clearRect(0,0,W,H);
+    if(!meta) return;
+
+    const bandLpx = meta.x0 * W;
+    const bandRpx = meta.x1 * W;
+
+    // scan band
+    octx.fillStyle = 'rgba(245,184,65,0.10)';
+    octx.fillRect(bandLpx, 0, bandRpx-bandLpx, H);
+    octx.strokeStyle = 'rgba(245,184,65,0.7)';
+    octx.lineWidth = 1.5;
+    octx.beginPath(); octx.moveTo(bandLpx,0); octx.lineTo(bandLpx,H);
+    octx.moveTo(bandRpx,0); octx.lineTo(bandRpx,H); octx.stroke();
+
+    // drag handles
+    octx.fillStyle = 'rgba(245,184,65,0.9)';
+    const cxpx = (bandLpx+bandRpx)/2;
+    octx.beginPath(); octx.arc(cxpx, H*0.5, 12, 0, Math.PI*2); octx.fill();
+    octx.fillStyle='#1a1400'; octx.font='bold 13px var(--mono)'; octx.textAlign='center';
+    octx.fillText('↔', cxpx, H*0.5+4);
+
+    // detected sheet ticks
+    octx.strokeStyle = '#38E0C8';
+    octx.lineWidth = 2;
+    for(const py of peaksNorm){
+      const y = py * H;
+      octx.beginPath();
+      octx.moveTo(bandLpx-6, y); octx.lineTo(bandRpx+6, y);
+      octx.stroke();
+    }
+
+    // optional signal plot
+    if(els.showProfile.checked && meta.signal){
+      const sig = meta.signal, n = sig.length;
+      let mn=Infinity, mx=-Infinity;
+      for(const v of sig){ if(v<mn)mn=v; if(v>mx)mx=v; }
+      const range = (mx-mn)||1;
+      octx.strokeStyle='rgba(56,224,200,0.5)'; octx.lineWidth=1;
+      octx.beginPath();
+      for(let i=0;i<n;i++){
+        const y=(i/n)*H;
+        const x=bandRpx+10 + ((sig[i]-mn)/range)*Math.min(70, W-bandRpx-16);
+        i? octx.lineTo(x,y):octx.moveTo(x,y);
+      }
+      octx.stroke();
+    }
+  }
+
+  function refreshCount(){
+    const c = Math.max(0, lastAutoCount + manualOffset);
+    countNum.textContent = c;
+  }
+
+  // ---------- loops ----------
+  function loop(){
+    if(mode!=='live'){ return; }
+    if(!frozen && video.readyState >= 2){
+      sizeCanvases();
+      const meta = analyze(video.videoWidth, video.videoHeight, video);
+      drawOverlay(meta);
+      refreshCount();
+      // fps
+      const t = performance.now();
+      if(lastFrameT){ fpsAcc += 1000/(t-lastFrameT); fpsN++; if(fpsN>=15){ fpsEl.textContent = Math.round(fpsAcc/fpsN)+' fps'; fpsAcc=0; fpsN=0; } }
+      lastFrameT = t;
+    }
+    requestAnimationFrame(loop);
+  }
+
+  function renderPhoto(){
+    if(mode!=='photo') return;
+    sizeCanvases();
+    const meta = analyze(still.naturalWidth, still.naturalHeight, still);
+    drawOverlay(meta);
+    refreshCount();
+  }
+
+  function reprocess(){
+    if(mode==='photo') renderPhoto();
+    // live mode reprocesses automatically each frame
+  }
+
+  // ---------- band dragging ----------
+  function pointerX(e){
+    const r = overlay.getBoundingClientRect();
+    const x = (e.touches? e.touches[0].clientX : e.clientX) - r.left;
+    return Math.max(0, Math.min(1, x / r.width));
+  }
+  let dragging=false;
+  function onDown(e){ dragging=true; bandCenter=pointerX(e); reprocess(); e.preventDefault(); }
+  function onMove(e){ if(!dragging)return; bandCenter=pointerX(e); reprocess(); e.preventDefault(); }
+  function onUp(){ dragging=false; }
+  overlay.addEventListener('mousedown', onDown);
+  overlay.addEventListener('mousemove', onMove);
+  window.addEventListener('mouseup', onUp);
+  overlay.addEventListener('touchstart', onDown, {passive:false});
+  overlay.addEventListener('touchmove', onMove, {passive:false});
+  overlay.addEventListener('touchend', onUp);
+
+  // ---------- controls ----------
+  function bindSlider(el, valEl){
+    const upd=()=>{ valEl.textContent = el.value; reprocess(); };
+    el.addEventListener('input', upd); upd();
+  }
+  bindSlider(els.sens, els.sensV);
+  bindSlider(els.pitch, els.pitchV);
+  bindSlider(els.width, els.widthV);
+  els.invert.addEventListener('change', reprocess);
+  els.showProfile.addEventListener('change', reprocess);
+
+  document.getElementById('drawerTab').addEventListener('click', function(){
+    const c = document.getElementById('ctrls');
+    c.classList.toggle('open');
+    this.textContent = c.classList.contains('open') ? '⚙ Ajustes ▴' : '⚙ Ajustes ▾';
+  });
+
+  document.getElementById('freezeBtn').addEventListener('click', function(){
+    if(mode==='photo') return; // photo is already static
+    frozen = !frozen;
+    this.textContent = frozen ? 'Retomar' : 'Congelar';
+    setStatus(frozen?'frozen':'live', frozen?'congelado':'ao vivo');
+    hint.textContent = frozen
+      ? 'Congelado. Confira as marcas e corrija com − / + se faltou ou sobrou alguma.'
+      : 'Aponte a faixa na lateral da pilha e arraste-a para centralizar nas bordas.';
+  });
+
+  document.getElementById('minus').addEventListener('click', ()=>{ manualOffset--; refreshCount(); });
+  document.getElementById('plus').addEventListener('click', ()=>{ manualOffset++; refreshCount(); });
+  document.getElementById('photoBtn').addEventListener('click', usePhoto);
+
+  document.getElementById('copyBtn').addEventListener('click', function(){
+    const v = countNum.textContent;
+    if(navigator.clipboard) navigator.clipboard.writeText(v);
+    const old=this.textContent; this.textContent='✓'; setTimeout(()=>this.textContent=old,900);
+  });
+
+  document.getElementById('startCam').addEventListener('click', startCamera);
+  document.getElementById('startPhoto').addEventListener('click', usePhoto);
+
+  sizeCanvases();
+  setStatus('','pronto');
+})();
+</script>
+</body>
+</html>
